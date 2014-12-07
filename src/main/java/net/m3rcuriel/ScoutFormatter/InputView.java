@@ -1,11 +1,15 @@
 package net.m3rcuriel.ScoutFormatter;
 
+import com.firebase.client.*;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.*;
+import java.lang.reflect.Array;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
 
 import org.json.*;
 
@@ -14,12 +18,41 @@ import org.json.*;
  */
 public class InputView extends JFrame {
     JTextArea increments, selectors, inputs;
-    JTextField matchType = new JTextField("Autonomous", 30);
-    public static void main (String[] args) {
+    JComboBox<String> matchType;
+    String regional = "TES";
+    private final ButtonHandler handler = new ButtonHandler();
+
+    public static void main(String[] args) {
         new InputView();
     }
 
     public InputView() {
+        Firebase firebase = new Firebase("https://scouting115.firebaseio.com/");
+        firebase.authWithCustomToken("mYraYRVVX70xtLBwdFb0Xd8Cw3MXyHyLN5dRSPdb", new Firebase.AuthResultHandler() {
+            public void onAuthenticated(AuthData authData) {
+
+            }
+
+            public void onAuthenticationError(FirebaseError firebaseError) {
+
+            }
+        });
+        firebase = firebase.child(regional + "/inputs");
+        matchType = new JComboBox<String>();
+        firebase.addValueEventListener(new ValueEventListener() {
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                List<String> types = new ArrayList<String>();
+                Map<String, Object> children = (Map<String, Object>) dataSnapshot.getValue();
+                String[] matchTypes = children.keySet().toArray(new String[(children.size())]);
+                System.out.println(matchTypes[0]);
+                for(String item : matchTypes)
+                    matchType.addItem(item);
+            }
+
+            public void onCancelled(FirebaseError firebaseError) {
+                firebaseError.toException().printStackTrace();
+            }
+        });
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         this.setTitle("Scouting JSON Formatter");
 
@@ -51,7 +84,10 @@ public class InputView extends JFrame {
         JScrollPane scrollInputs = initTextArea(inputs);
         JPanel type = new JPanel();
         type.add(new JLabel("Match Section:"));
-        type.add(matchType);
+        type.add(matchType, "growx");
+        JButton manage = new JButton("Manage...");
+        manage.addActionListener(handler);
+        type.add(manage, "gapleft 10");
         input.add(type, "center");
         input.add(new JLabel("Increments: "));
         input.add(scrollIncrements, "gapleft 10");
@@ -67,8 +103,7 @@ public class InputView extends JFrame {
         input.add(buttonBox, "gaptop 5, growx, gapleft 10, gapright 10");
     }
 
-    public void initButtonBox (Box buttonBox) {
-        ButtonHandler handler = new ButtonHandler();
+    public void initButtonBox(Box buttonBox) {
         JButton help = new JButton("Help");
         JButton cancel = new JButton("Cancel");
         JButton save = new JButton("Save");
@@ -83,33 +118,39 @@ public class InputView extends JFrame {
         buttonBox.add(save);
     }
 
-    public void saveJSON () {
-        File json = new File(matchType.getText() + "_collection.json");
-        JSONObject objects = new JSONObject();
-
-        objects.put("increments", increments.getText().split("\n"));
-
-        JSONArray selectorTags = new JSONArray();
-        String[] selectorText = selectors.getText().split("\n");
-        for (String text : selectorText) {
-            selectorTags.put(text.split("\t"));
+    public void saveJSON() {
+        final CountDownLatch done = new CountDownLatch(1);
+        Firebase firebase = new Firebase("https://scouting115.firebaseio.com/");
+        final AuthView authenticate = new AuthView(this, firebase);
+        if (!authenticate.succeeded()) {
+            System.out.println("canceled");
+            return;
         }
-        objects.put("selectors", selectorTags);
-        objects.put("inputs", inputs.getText().split("\n"));
-
+        firebase = authenticate.getFirebase();
+        Map<String, Object> inputMap = new HashMap<String, Object>();
+        inputMap.put("inputs", inputs.getText().split("\n"));
+        inputMap.put("increments", increments.getText().split("\n"));
+        String[] selectorText = selectors.getText().split("\n");
+        List<List<Object>> selectorTags = new ArrayList<List<Object>>();
+        for (String text : selectorText) {
+            selectorTags.add((List) Arrays.asList(text.split("\t")));
+        }
+        inputMap.put("selectors", selectorTags.toArray());
+        firebase.child("TES/inputs/" + matchType.getSelectedItem()).setValue(inputMap, new Firebase.CompletionListener() {
+            public void onComplete(FirebaseError firebaseError, Firebase firebase) {
+                System.out.println("done");
+                done.countDown();
+            }
+        });
         try {
-            PrintWriter printWriter = new PrintWriter(json);
-            objects.write(printWriter);
-            printWriter.close();
-        } catch (FileNotFoundException e) {
+            done.await();
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
         System.exit(0);
     }
 
     public class ButtonHandler implements ActionListener {
-        @Override
         public void actionPerformed(ActionEvent e) {
             JButton source = (JButton) e.getSource();
             if (source.getText().equals("Cancel")) {
@@ -120,6 +161,9 @@ public class InputView extends JFrame {
             }
             if (source.getText().equals("Save")) {
                 InputView.this.saveJSON();
+            }
+            if (source.getText().equals("Manage")) {
+                //todo make this actually do something
             }
         }
     }
