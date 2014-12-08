@@ -26,8 +26,9 @@ public class AuthView extends JDialog implements ActionListener {
     private String passwordText;
     private boolean success = false;
 
-    public AuthView(JFrame frame, Firebase inputRef) {
-        super(frame, "Authentication", ModalityType.DOCUMENT_MODAL);
+    public AuthView(Container c, Firebase inputRef) {
+        this.setTitle("Authentication");
+        this.setModalityType(ModalityType.DOCUMENT_MODAL);
 
         this.inputRef = inputRef;
 
@@ -52,7 +53,7 @@ public class AuthView extends JDialog implements ActionListener {
 
         this.pack();
 
-        this.setLocationRelativeTo(frame);
+        this.setLocationRelativeTo(c);
         this.setVisible(true);
     }
 
